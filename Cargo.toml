@@ -1,0 +1,12 @@
+[package]
+name = "solstice"
+version = "0.1.0"
+authors = ["thsowers <tyler@startrakstudios.com>"]
+edition = "2018"
+
+[dependencies]
+rustfft = "3.0.0"
+byteorder = "1.3.1"
+num = "0.2.0"
+hound = "3.4.0"
+clap = "2.32.0"
