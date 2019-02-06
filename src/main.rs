@@ -1,13 +1,9 @@
-use byteorder::{BigEndian, ReadBytesExt};
 use clap::{App, Arg, SubCommand};
-use hound::{SampleFormat, WavReader, WavSamples, WavSpec, WavWriter};
+use hound::{WavReader, WavSamples};
 use num::complex::Complex;
 use rustfft::FFTplanner;
-use rustfft::FFT;
-use std::fs;
-use std::io;
-use std::io::prelude::*;
-use std::io::Cursor;
+use std::fs::File;
+use std::io::BufReader;
 
 trait Signal {
     fn energy(self) -> f64;
@@ -26,23 +22,44 @@ where
     }
 }
 
-fn find_spectral_peak(filename: &str) -> Option<f32> {
-    let mut reader = WavReader::open(filename).expect("Failed to open WAV file");
-    let num_samples = reader.len() as usize;
+// Much acknowledgment to http://siciarz.net/24-days-rust-hound/
+fn get_audio_data(filename: &str) -> (Vec<Complex<f32>>, usize) {
+    // Get audio data and size
+    let (mut reader, num_samples) = read_audio_file(filename);
+
+    // Setup FFT
     let mut planner = FFTplanner::new(false);
-    let mut fft = planner.plan_fft(num_samples);
-    println!("Collecting {} samples...", num_samples);
+    let fft = planner.plan_fft(num_samples);
+
+    // Collect audio data into a complex vector for FFT
     let mut signal = reader
         .samples::<i16>()
         .map(|x| Complex::new(x.unwrap() as f32, 0f32))
         .collect::<Vec<_>>();
+
+    // Set output to be same length as input
     let mut spectrum = signal.clone();
+
+    // Perform FFT
     println!("Performing FFT...");
     fft.process(&mut signal[..], &mut spectrum[..]);
+
+    (spectrum, num_samples)
+}
+
+fn read_audio_file(filename: &str) -> (WavReader<BufReader<File>>, usize) {
+    // Read WAV audio file
+    let reader = WavReader::open(filename).expect("Failed to open WAV file");
+    let num_samples = reader.len() as usize; // Get length of transform to be performed
+
+    (reader, num_samples)
+}
+
+fn find_spectral_peak(spectrum: Vec<Complex<f32>>, num_samples: usize) -> Option<f32> {
     println!("Searching for max spectrum...");
     let max_peak = spectrum
         .iter()
-        .take(num_samples / 2)
+        .take(num_samples / 2) // FFT is symmetrical, ignore first half
         .enumerate()
         .max_by_key(|&(_, freq)| freq.norm() as u32);
     println!("...Done");
@@ -87,8 +104,8 @@ fn main() {
         .get_matches();
 
     if let Some(o) = matches.value_of("input") {
-        let spec = find_spectral_peak(o);
-        println!("{}", spec.unwrap())
+        let (spectrum, num_samples) = get_audio_data(o);
+        println!("{}", find_spectral_peak(spectrum, num_samples).unwrap())
     } else {
         println!("Please provide an audio file");
     }
